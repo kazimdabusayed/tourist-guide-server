@@ -53,14 +53,15 @@ const logger = async (req, res, next) => {
 async function run() {
 	try {
 		// Connect the client to the server	(optional starting in v4.7)
-		await client.connect();
+		// await client.connect();
 
 		const userCollection = client.db("touristDB").collection("users");
 		const packageCollection = client.db("touristDB").collection("packages");
 		const wishlistCollection = client
 			.db("touristDB")
 			.collection("wishlists");
-		const storyCollection = client.db("bistroDb").collection("stories");
+		const storyCollection = client.db("touristDB").collection("stories");
+		const bookingCollection = client.db("touristDB").collection("bookings");
 
 		//! auth
 		app.post("/api/jwt", logger, async (req, res) => {
@@ -84,9 +85,7 @@ async function run() {
 			}
 			const token = req.headers.authorization.split(" ")[1];
 			// console.log(56, token);
-			jwt.verify(
-				token,
-				process.env.ACCESS_TOKEN_SECRET,
+			jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,
 				(err, decoded) => {
 					if (err) {
 						return res
@@ -143,8 +142,7 @@ async function run() {
 			const result = await cursor.toArray();
 			res.send(result);
 		});
-		app.get(
-			"/api/users/guide/:email",
+		app.get("/api/users/guide/:email",
 			verifyToken,
 			verifyGuide,
 			async (req, res) => {
@@ -228,11 +226,7 @@ async function run() {
 			}
 		);
 
-		app.delete(
-			"/api/users/:id",
-			verifyToken,
-			verifyAdmin,
-			async (req, res) => {
+		app.delete("/api/users/:id", verifyToken, verifyAdmin,async (req, res) => {
 				const id = req.params.id;
 				const query = { _id: new ObjectId(id) };
 				const result = await userCollection.deleteOne(query);
@@ -273,7 +267,6 @@ async function run() {
 				for (let i = 0; i < req.files.length; i++) {
 					const { path, originalname, mimetype } = req.files[i];
 					const parts = originalname.split(".");
-
 					const ext = parts[parts.length - 1];
 					const newPath = path + "." + ext;
 					fs.renameSync(path, newPath);
@@ -285,39 +278,39 @@ async function run() {
 			}
 		);
 
-		app.post("/api/upload", upload.single("image"), function (req, res) {
-			cloudinary.uploader.upload(req.file.path, function (err, result) {
-				if (err) {
-					console.log(err);
-					return res.status(500).json({
-						success: false,
-						message: "Error",
-					});
-				}
+		// app.post("/api/upload", upload.single("image"), function (req, res) {
+		// 	cloudinary.uploader.upload(req.file.path, function (err, result) {
+		// 		if (err) {
+		// 			console.log(err);
+		// 			return res.status(500).json({
+		// 				success: false,
+		// 				message: "Error",
+		// 			});
+		// 		}
 
-				res.status(200).json({
-					success: true,
-					message: "Uploaded!",
-					data: result,
-				});
-			});
-		});
+		// 		res.status(200).json({
+		// 			success: true,
+		// 			message: "Uploaded!",
+		// 			data: result,
+		// 		});
+		// 	});
+		// });
 
 
-		app.post("/",upload.single("save__to__cloudinary"),
-			async (req, res) => {
-				const localFilePath = req.file?.path || "";
+		// app.post("/",upload.single("save__to__cloudinary"),
+		// 	async (req, res) => {
+		// 		const localFilePath = req.file?.path || "";
 
-				const { isSuccess, message, statusCode, imageURL } =
-					await cloudinaryInstance.uploadImage(localFilePath);
+		// 		const { isSuccess, message, statusCode, imageURL } =
+		// 			await cloudinaryInstance.uploadImage(localFilePath);
 
-				return res.status(statusCode).json({
-					isSuccess,
-					message,
-					imageURL,
-				});
-			}
-		);
+		// 		return res.status(statusCode).json({
+		// 			isSuccess,
+		// 			message,
+		// 			imageURL,
+		// 		});
+		// 	}
+		// );
 
 		//packages
 		app.post("/api/packages", async (req, res) => {
@@ -329,12 +322,20 @@ async function run() {
 			const result = await packageCollection.find().toArray();
 			res.send(result);
 		});
-		app.get("/api/packages/:id", async (req, res) => {
+		app.get("/api/packages/:id", logger, async (req, res) => {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
 			const result = await packageCollection.findOne(query);
 			res.send(result);
 		});
+
+		//booking
+		app.post("/api/v1/bookings", async (req, res) => {
+			const booking = req.body;
+			const result = await bookingCollection.insertOne(booking);
+			res.send(result);
+		});
+
 
 		//wishlists
 		app.post("/api/wishlists", async (req, res) => {
@@ -342,12 +343,27 @@ async function run() {
 			const result = await wishlistCollection.insertOne(wishlist);
 			res.send(result);
 		});
-		app.get("/api/wishlists", async (req, res) => {
-			const email = req.body.email;
-			const query = { email: email };
-			const result = await wishlistCollection.find(query).toArray();
+		app.get("/api/wishlists", verifyToken, verifyToken, async (req, res) => {
+			const result = await wishlistCollection.find().toArray();
 			res.send(result);
 		});
+		app.get("/api/wishlists/:email", verifyToken, async (req, res) => {
+			const email = req.params.email; 
+			// Handle missing email
+			if (!email) {
+				return res.status(400).send({ error: "Missing email parameter" });
+			}
+			const query = { email };
+			try {
+				const result = await wishlistCollection.find(query).toArray();
+				console.log(result);
+				res.send(result);
+			} catch (error) {
+				console.error(error);
+				res.status(500).send({ error: "Internal server error" });
+			}
+		});
+
 		app.delete("/api/wishlists/:id", async (req, res) => {
 			const id = req.params.id;
 			const query = { _id: new ObjectId(id) };
@@ -369,10 +385,10 @@ async function run() {
 		});
 
 		// Send a ping to confirm a successful connection
-		await client.db("admin").command({ ping: 1 });
-		console.log(
-			"Pinged your deployment. You successfully connected to MongoDB!"
-		);
+		// await client.db("admin").command({ ping: 1 });
+		// console.log(
+		// 	"Pinged your deployment. You successfully connected to MongoDB!"
+		// );
 	} finally {
 		// Ensures that the client will close when you finish/error
 		// await client.close();
